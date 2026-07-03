@@ -1,0 +1,255 @@
+import { useState, useEffect, useCallback } from "react";
+
+const PRIORIDADES = { alta: { label: "Alta", color: "#8b0000" }, media: { label: "Media", color: "#5a3e00" }, baixa: { label: "Baixa", color: "#1a3a1a" } };
+const COLUNAS = ["A fazer", "Em andamento", "Concluido"];
+const HOJE = new Date();
+
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+const formatDate = d => {
+  const dt = new Date(d + "T00:00:00");
+  return dt.toLocaleDateString("pt-BR");
+};
+
+const mesLabel = (d) => {
+  const dt = new Date(d + "T00:00:00");
+  return dt.toLocaleString("pt-BR", { month: "long", year: "numeric" });
+};
+
+const corPrioridade = p => PRIORIDADES[p]?.color || "#333";
+
+const tarefaVazia = () => ({
+  id: uid(), titulo: "", descricao: "", prioridade: "media",
+  status: "A fazer", data: new Date().toISOString().slice(0, 10), tags: ""
+});
+
+export default function App() {
+  const [tarefas, setTarefas] = useState([]);
+  const [view, setView] = useState("kanban");
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(tarefaVazia());
+  const [filtro, setFiltro] = useState("");
+  const [mesAtual, setMesAtual] = useState(HOJE.toISOString().slice(0, 7));
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.get("demandas_tarefas");
+        if (r?.value) setTarefas(JSON.parse(r.value));
+      } catch (_) {}
+      setLoaded(true);
+    })();
+  }, []);
+
+  const salvar = useCallback(async (lista) => {
+    setTarefas(lista);
+    try { await window.storage.set("demandas_tarefas", JSON.stringify(lista)); } catch (_) {}
+  }, []);
+
+  const abrirNova = () => { setForm(tarefaVazia()); setModal("form"); };
+  const abrirEditar = (t) => { setForm({ ...t }); setModal("form"); };
+
+  const salvarTarefa = () => {
+    if (!form.titulo.trim()) return;
+    const existe = tarefas.find(t => t.id === form.id);
+    salvar(existe ? tarefas.map(t => t.id === form.id ? form : t) : [...tarefas, form]);
+    setModal(null);
+  };
+
+  const excluir = (id) => salvar(tarefas.filter(t => t.id !== id));
+
+  const moverStatus = (id, status) => salvar(tarefas.map(t => t.id === id ? { ...t, status } : t));
+
+  const tf = tarefas.filter(t =>
+    !filtro || t.titulo.toLowerCase().includes(filtro.toLowerCase()) ||
+    (t.tags || "").toLowerCase().includes(filtro.toLowerCase())
+  );
+
+  const diasDoMes = () => {
+    const [ano, mes] = mesAtual.split("-").map(Number);
+    const total = new Date(ano, mes, 0).getDate();
+    const primeiro = new Date(ano, mes - 1, 1).getDay();
+    return { total, primeiro };
+  };
+
+  const tarefasNoDia = (dia) => {
+    const d = `${mesAtual}-${String(dia).padStart(2, "0")}`;
+    return tarefas.filter(t => t.data === d);
+  };
+
+  const s = {
+    app: { fontFamily: "'Segoe UI', sans-serif", background: "#0a0a0a", minHeight: "100vh", color: "#d4d4d4", padding: "0" },
+    header: { background: "#0f0f0f", borderBottom: "1px solid #2a0a0a", padding: "0 24px", display: "flex", alignItems: "center", gap: "16px", height: "56px" },
+    titulo: { color: "#8b0000", fontWeight: 700, fontSize: "18px", letterSpacing: "2px", textTransform: "uppercase", margin: 0, flex: 1 },
+    navBtn: (ativo) => ({ background: ativo ? "#1a0000" : "transparent", color: ativo ? "#cc2222" : "#777", border: `1px solid ${ativo ? "#8b0000" : "#2a2a2a"}`, padding: "6px 14px", borderRadius: "4px", cursor: "pointer", fontSize: "13px", letterSpacing: "1px", textTransform: "uppercase" }),
+    btnNova: { background: "#8b0000", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "4px", cursor: "pointer", fontSize: "13px", fontWeight: 600, letterSpacing: "1px" },
+    filtro: { background: "#111", border: "1px solid #2a2a2a", color: "#ccc", padding: "6px 12px", borderRadius: "4px", fontSize: "13px", outline: "none", width: "180px" },
+    body: { padding: "20px 24px" },
+    col: { background: "#0f0f0f", border: "1px solid #1e1e1e", borderTop: "2px solid #8b0000", borderRadius: "6px", minWidth: "260px", flex: 1, padding: "12px" },
+    colTitulo: { color: "#999", fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "12px", display: "flex", justifyContent: "space-between" },
+    card: { background: "#111", border: "1px solid #1e1e1e", borderLeft: "3px solid #8b0000", borderRadius: "4px", padding: "12px", marginBottom: "10px", cursor: "pointer" },
+    cardTitulo: { color: "#e0e0e0", fontWeight: 600, fontSize: "14px", marginBottom: "6px" },
+    badge: (p) => ({ background: corPrioridade(p), color: "#eee", fontSize: "10px", padding: "2px 8px", borderRadius: "10px", letterSpacing: "1px", textTransform: "uppercase", display: "inline-block" }),
+    tag: { background: "#1a1a1a", color: "#666", fontSize: "10px", padding: "2px 6px", borderRadius: "3px", marginLeft: "4px" },
+    data: { color: "#555", fontSize: "11px", marginTop: "6px" },
+    listRow: (i) => ({ background: i % 2 === 0 ? "#0f0f0f" : "#111", border: "1px solid #1a1a1a", borderLeft: "3px solid #8b0000", padding: "10px 16px", marginBottom: "6px", borderRadius: "4px", display: "flex", alignItems: "center", gap: "12px", cursor: "pointer" }),
+    select: { background: "#111", border: "1px solid #333", color: "#ccc", padding: "4px 8px", borderRadius: "4px", fontSize: "12px" },
+    overlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
+    modalBox: { background: "#111", border: "1px solid #2a0a0a", borderTop: "3px solid #8b0000", borderRadius: "8px", padding: "24px", width: "440px", maxHeight: "85vh", overflowY: "auto" },
+    input: { background: "#0a0a0a", border: "1px solid #2a2a2a", color: "#ccc", padding: "8px 12px", borderRadius: "4px", width: "100%", fontSize: "14px", outline: "none", boxSizing: "border-box" },
+    label: { color: "#666", fontSize: "11px", letterSpacing: "1px", textTransform: "uppercase", display: "block", marginBottom: "4px", marginTop: "12px" },
+    btnSalvar: { background: "#8b0000", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "4px", cursor: "pointer", fontWeight: 600, fontSize: "14px", marginTop: "16px" },
+    btnCancelar: { background: "transparent", color: "#555", border: "1px solid #2a2a2a", padding: "10px 20px", borderRadius: "4px", cursor: "pointer", fontSize: "14px", marginTop: "16px", marginLeft: "8px" },
+    btnExcluir: { background: "transparent", color: "#8b0000", border: "1px solid #2a0a0a", padding: "10px 16px", borderRadius: "4px", cursor: "pointer", fontSize: "14px", marginTop: "16px", marginLeft: "8px" },
+    calGrid: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "4px" },
+    calDia: (temTarefa, isHoje) => ({ background: isHoje ? "#1a0000" : "#0f0f0f", border: `1px solid ${isHoje ? "#8b0000" : temTarefa ? "#3a1a1a" : "#1a1a1a"}`, borderRadius: "4px", padding: "6px", minHeight: "64px", cursor: temTarefa ? "pointer" : "default" }),
+    calDiaNum: (isHoje) => ({ fontSize: "12px", color: isHoje ? "#cc2222" : "#555", fontWeight: isHoje ? 700 : 400, marginBottom: "4px" }),
+    calPonto: (p) => ({ width: "6px", height: "6px", borderRadius: "50%", background: corPrioridade(p), display: "inline-block", margin: "1px" }),
+    empty: { color: "#333", textAlign: "center", padding: "40px", fontSize: "13px", letterSpacing: "1px" },
+    mesNav: { display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" },
+    mesBtn: { background: "#111", border: "1px solid #2a2a2a", color: "#666", padding: "4px 12px", borderRadius: "4px", cursor: "pointer" },
+    mesTitulo: { color: "#999", fontSize: "14px", letterSpacing: "2px", textTransform: "uppercase", flex: 1, textAlign: "center" },
+    diaSemana: { color: "#444", fontSize: "10px", letterSpacing: "1px", textAlign: "center", textTransform: "uppercase", padding: "4px 0" },
+  };
+
+  const mudarMes = (dir) => {
+    const [a, m] = mesAtual.split("-").map(Number);
+    const d = new Date(a, m - 1 + dir, 1);
+    setMesAtual(d.toISOString().slice(0, 7));
+  };
+
+  if (!loaded) return <div style={{ ...s.app, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}><span style={{ color: "#8b0000", letterSpacing: "3px" }}>CARREGANDO...</span></div>;
+
+  return (
+    <div style={s.app}>
+      <div style={s.header}>
+        <div style={s.titulo}>COMMAND CENTER</div>
+        <input style={s.filtro} placeholder="Buscar..." value={filtro} onChange={e => setFiltro(e.target.value)} />
+        {["kanban", "lista", "calendario"].map(v => (
+          <button key={v} style={s.navBtn(view === v)} onClick={() => setView(v)}>
+            {v === "kanban" ? "Kanban" : v === "lista" ? "Lista" : "Calendario"}
+          </button>
+        ))}
+        <button style={s.btnNova} onClick={abrirNova}>+ Nova</button>
+      </div>
+
+      <div style={s.body}>
+        {view === "kanban" && (
+          <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+            {COLUNAS.map(col => {
+              const items = tf.filter(t => t.status === col);
+              return (
+                <div key={col} style={s.col}>
+                  <div style={s.colTitulo}>
+                    <span>{col}</span>
+                    <span style={{ color: "#8b0000" }}>{items.length}</span>
+                  </div>
+                  {items.length === 0 && <div style={{ color: "#2a2a2a", fontSize: "12px", textAlign: "center", padding: "20px 0" }}>—</div>}
+                  {items.map(t => (
+                    <div key={t.id} style={s.card} onClick={() => abrirEditar(t)}>
+                      <div style={s.cardTitulo}>{t.titulo}</div>
+                      {t.descricao && <div style={{ color: "#555", fontSize: "12px", marginBottom: "8px" }}>{t.descricao.slice(0, 60)}{t.descricao.length > 60 ? "..." : ""}</div>}
+                      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
+                        <span style={s.badge(t.prioridade)}>{PRIORIDADES[t.prioridade]?.label}</span>
+                        {(t.tags || "").split(",").filter(Boolean).map(tg => <span key={tg} style={s.tag}>{tg.trim()}</span>)}
+                      </div>
+                      <div style={s.data}>{formatDate(t.data)}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {view === "lista" && (
+          <div>
+            {tf.length === 0 && <div style={s.empty}>NENHUMA DEMANDA ENCONTRADA</div>}
+            {tf.map((t, i) => (
+              <div key={t.id} style={s.listRow(i)} onClick={() => abrirEditar(t)}>
+                <span style={s.badge(t.prioridade)}>{PRIORIDADES[t.prioridade]?.label}</span>
+                <span style={{ flex: 1, color: "#ccc", fontSize: "14px" }}>{t.titulo}</span>
+                <span style={{ color: "#555", fontSize: "12px" }}>{t.status}</span>
+                <span style={{ color: "#555", fontSize: "12px" }}>{formatDate(t.data)}</span>
+                <select style={s.select} value={t.status} onClick={e => e.stopPropagation()} onChange={e => moverStatus(t.id, e.target.value)}>
+                  {COLUNAS.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {view === "calendario" && (() => {
+          const { total, primeiro } = diasDoMes();
+          const dias = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
+          const [anoAtual, mesAtualNum] = mesAtual.split("-").map(Number);
+          return (
+            <div>
+              <div style={s.mesNav}>
+                <button style={s.mesBtn} onClick={() => mudarMes(-1)}>{"<"}</button>
+                <span style={s.mesTitulo}>{mesLabel(mesAtual + "-01")}</span>
+                <button style={s.mesBtn} onClick={() => mudarMes(1)}>{">"}</button>
+              </div>
+              <div style={s.calGrid}>
+                {dias.map(d => <div key={d} style={s.diaSemana}>{d}</div>)}
+                {Array(primeiro).fill(null).map((_, i) => <div key={"v" + i} />)}
+                {Array(total).fill(null).map((_, i) => {
+                  const dia = i + 1;
+                  const tfs = tarefasNoDia(dia);
+                  const isHoje = HOJE.getFullYear() === anoAtual && (HOJE.getMonth() + 1) === mesAtualNum && HOJE.getDate() === dia;
+                  return (
+                    <div key={dia} style={s.calDia(tfs.length > 0, isHoje)} onClick={() => tfs.length > 0 && abrirEditar(tfs[0])}>
+                      <div style={s.calDiaNum(isHoje)}>{dia}</div>
+                      <div>{tfs.map(t => <span key={t.id} style={s.calPonto(t.prioridade)} title={t.titulo} />)}</div>
+                      {tfs.slice(0, 2).map(t => <div key={t.id} style={{ fontSize: "9px", color: "#555", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{t.titulo}</div>)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {modal === "form" && (
+        <div style={s.overlay} onClick={() => setModal(null)}>
+          <div style={s.modalBox} onClick={e => e.stopPropagation()}>
+            <div style={{ color: "#8b0000", fontSize: "12px", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "16px", borderBottom: "1px solid #1a0000", paddingBottom: "12px" }}>
+              {tarefas.find(t => t.id === form.id) ? "Editar demanda" : "Nova demanda"}
+            </div>
+            <label style={s.label}>Titulo</label>
+            <input style={s.input} value={form.titulo} onChange={e => setForm({ ...form, titulo: e.target.value })} placeholder="Nome da demanda..." />
+            <label style={s.label}>Descricao</label>
+            <textarea style={{ ...s.input, height: "72px", resize: "vertical" }} value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Detalhes..." />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div>
+                <label style={s.label}>Prioridade</label>
+                <select style={{ ...s.input, padding: "8px" }} value={form.prioridade} onChange={e => setForm({ ...form, prioridade: e.target.value })}>
+                  <option value="alta">Alta</option>
+                  <option value="media">Media</option>
+                  <option value="baixa">Baixa</option>
+                </select>
+              </div>
+              <div>
+                <label style={s.label}>Status</label>
+                <select style={{ ...s.input, padding: "8px" }} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                  {COLUNAS.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            <label style={s.label}>Data</label>
+            <input type="date" style={s.input} value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} />
+            <label style={s.label}>Tags (separadas por virgula)</label>
+            <input style={s.input} value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} placeholder="ex: urgente, cliente, infra" />
+            <div style={{ display: "flex", flexWrap: "wrap" }}>
+              <button style={s.btnSalvar} onClick={salvarTarefa}>Salvar</button>
+              <button style={s.btnCancelar} onClick={() => setModal(null)}>Cancelar</button>
+              {tarefas.find(t => t.id === form.id) && <button style={s.btnExcluir} onClick={() => { excluir(form.id); setModal(null); }}>Excluir</button>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
